@@ -6,11 +6,11 @@ set -ex
 # Download and extract minimal Alpine system
 #############################################
 
-wget "http://dl-cdn.alpinelinux.org/alpine/v3.19/releases/${ARCHITECTURE}/alpine-minirootfs-3.19.1-${ARCHITECTURE}.tar.gz"
+wget -c -N "http://dl-cdn.alpinelinux.org/alpine/v3.19/releases/${ARCHITECTURE}/alpine-minirootfs-3.19.1-${ARCHITECTURE}.tar.gz"
 sudo rm -rf ./miniroot  true # Clean up from previous runs
 mkdir -p ./miniroot
 cd ./miniroot
-sudo tar xf ../alpine-minirootfs-*-"${ARCHITECTURE}".tar.gz
+sudo tar xf $(ls -1B ../alpine-minirootfs-*-"${ARCHITECTURE}".tar.gz | tail -n1)
 cd -
 
 #############################################
@@ -23,6 +23,12 @@ sudo mount -o bind /dev miniroot/dev
 sudo mount -t proc none miniroot/proc
 sudo mount -t sysfs none miniroot/sys
 sudo cp -p /etc/resolv.conf miniroot/etc/
+
+#############################################
+# Clean up chroot on exit
+#############################################
+
+trap "sudo umount miniroot/proc miniroot/sys miniroot/dev" EXIT
 
 #############################################
 # Run build.sh in chroot
@@ -43,12 +49,6 @@ else
     echo "Edit chroot_build.sh to support this architecture as well, it should be easy"
     exit 1
 fi
-
-#############################################
-# Clean up chroot
-#############################################
-
-sudo umount miniroot/proc miniroot/sys miniroot/dev
 
 #############################################
 # Copy build artefacts out
