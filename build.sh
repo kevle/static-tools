@@ -8,7 +8,21 @@ if ! command -v apk; then
 fi
 
 apk update
-apk add alpine-sdk util-linux strace file autoconf automake libtool
+apk add alpine-sdk util-linux strace file autoconf automake libtool #libintl
+
+# Build glib-2 mostly static
+apk add cmake meson libmount libelf pcre2-dev
+wget -c https://gitlab.gnome.org/GNOME/glib/-/archive/2.82.1/glib-2.82.1.tar.bz2
+tar xf glib-*.tar.bz2
+cd glib-*/
+
+# Remove empty directory so meson is happy
+rm -rf subprojects/gvdb
+
+meson setup build --default-library=static
+ninja -C build
+ninja -C build install
+cd -
 
 # Build static squashfuse
 apk add fuse-dev fuse-static zstd-dev zstd-static zlib-dev zlib-static # fuse3-static fuse3-dev
@@ -47,7 +61,7 @@ ls -lh patchelf
 cd -
 
 # Build static zsyncmake
-apk add glib-dev glib-static
+apk add glib-static
 wget http://zsync.moria.org.uk/download/zsync-0.6.2.tar.bz2
 tar xf zsync-*.tar.bz2
 cd zsync-*/
@@ -69,14 +83,34 @@ file mksquashfs unsquashfs
 strip mksquashfs unsquashfs
 cd -
 
+# Get gnulib for libintl from gettext
+wget -O gnulib.tar.gz 'https://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=snapshot;h=3cc5b69dda06890929a2d0433f3070836e04d154;sf=tgz'
+tar xf gnulib.tar.gz
+cd gnulib-*/
+./gnulib-tool --version
+cd -
+
 # Build static desktop-file-utils
-# apk add glib-static glib-dev
+# apk add glib-dev
+
 wget -c https://gitlab.freedesktop.org/xdg/desktop-file-utils/-/archive/56d220dd679c7c3a8f995a41a27a7d6f3df49dea/desktop-file-utils-56d220dd679c7c3a8f995a41a27a7d6f3df49dea.tar.gz
 tar xf desktop-file-utils-*.tar.gz
 cd desktop-file-utils-*/
 # The next 2 lines are a workaround for: checking build system type... ./config.guess: unable to guess system type
 wget 'http://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.guess;hb=HEAD' -O config.guess
 wget 'http://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.sub;hb=HEAD' -O config.sub
+
+../gnulib-*/gnulib-tool --import gettext
+sed -i '/AC_CONFIG_FILES/s/$/ lib\/Makefile/' ./configure.ac
+sed -i '/SUBDIRS/s/$/ lib/' Makefile.am
+sed -i '/EXTRA_DIST/s/$/ m4\/gnulib-cache.m4/' Makefile.am
+sed -i '/AC_PROG_CC/a gl_EARLY\ngl_INIT' ./configure.ac
+
+aclocal
+autoheader
+autoconf
+automake --add-missing
+autoreconf
 autoreconf --install # https://github.com/shendurelab/LACHESIS/issues/31#issuecomment-283963819
 ./configure CFLAGS=-no-pie LDFLAGS=-static
 make -j$(nproc)
@@ -96,6 +130,7 @@ cd libxmlb-*
 meson build --default-library=static -Dintrospection=false -Dgtkdoc=false -Dcli=false
 ninja -C build
 ninja -C build install
+
 # ldconfig # segfaults
 cd -
 wget -O appstream.tar.gz https://github.com/ximion/appstream/archive/v1.0.2.tar.gz # Keep at v1.0.x so as to not have a moving target
